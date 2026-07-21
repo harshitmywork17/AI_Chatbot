@@ -1,4 +1,4 @@
-"""Singleton Groq LLM client (see feedback-prompts-and-singleton-conventions)."""
+"""Groq LLM client, built once per process and reused across every query."""
 
 from llama_index.llms.groq import Groq
 
@@ -12,6 +12,8 @@ class GroqLLMProvider:
     _llm: Groq
 
     def __new__(cls) -> "GroqLLMProvider":
+        # __new__ (not __init__) returns the cached instance, so repeated
+        # GroqLLMProvider() calls reuse one client/HTTP session per process.
         if cls._instance is None:
             instance = super().__new__(cls)
             settings = get_settings()

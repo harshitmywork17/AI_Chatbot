@@ -5,12 +5,16 @@ Usage:
 """
 
 import asyncio
+import os
 from typing import Any
+
+os.environ.setdefault("TRANSFORMERS_NO_ADVISORY_WARNINGS", "1")
 
 from llama_index.core.agent.workflow import AgentOutput, FunctionAgent, ToolCallResult
 from llama_index.core.memory import ChatMemoryBuffer
 
 from app.services.sql_agent_service import SQLAgentProvider
+from app.services.trace_service import AgentTrace, save_trace
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -39,16 +43,26 @@ def _print_result(sql: str | None, query_result: dict[str, Any] | None, summary:
 
 async def _handle_query(agent: FunctionAgent, memory: ChatMemoryBuffer, user_query: str) -> None:
     handler = agent.run(user_msg=user_query, memory=memory)
+    trace = AgentTrace(query=user_query)
 
     last_sql: str | None = None
     last_result: dict[str, Any] | None = None
+    # Walk the streamed events (instead of just awaiting handler) so we can pull out
+    # the SQL/rows the agent actually ran, and record every tool call and "Reasoning:"
+    # message into `trace` for later inspection.
     async for event in handler.stream_events():
-        if isinstance(event, ToolCallResult) and event.tool_name == "execute_sql_query":
-            last_sql = event.tool_kwargs.get("sql")
-            last_result = event.tool_output.raw_output
+        if isinstance(event, ToolCallResult):
+            trace.record_tool_result(event)
+            if event.tool_name == "execute_sql_query":
+                last_sql = event.tool_kwargs.get("sql")
+                last_result = event.tool_output.raw_output
+        elif isinstance(event, AgentOutput):
+            trace.record_agent_output(event)
 
     response: AgentOutput = await handler
+    trace_path = save_trace(trace)
     _print_result(last_sql, last_result, str(response.response.content))
+    print(f"Trace: {trace_path}\n")
 
 
 async def _run_repl() -> None:

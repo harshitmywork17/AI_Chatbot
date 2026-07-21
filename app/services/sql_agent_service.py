@@ -1,4 +1,4 @@
-"""Singleton SQL agent builder (see feedback-prompts-and-singleton-conventions)."""
+"""FunctionAgent wired up once with the SQL tools/prompt, then reused for every query."""
 
 from llama_index.core.agent.workflow import FunctionAgent
 
@@ -14,6 +14,8 @@ class SQLAgentProvider:
     _agent: FunctionAgent
 
     def __new__(cls) -> "SQLAgentProvider":
+        # Singleton so tool binding (build_sql_agent_tools) runs once per process,
+        # not on every question the REPL loop asks.
         if cls._instance is None:
             instance = super().__new__(cls)
             instance._agent = FunctionAgent(

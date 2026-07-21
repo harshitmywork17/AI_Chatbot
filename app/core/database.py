@@ -1,4 +1,4 @@
-"""Singleton SQLAlchemy engine/session provider (see feedback-prompts-and-singleton-conventions)."""
+"""SQLAlchemy engine/session provider, built once per process and reused."""
 
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -17,6 +17,8 @@ class DatabaseSessionProvider:
     _session_factory: sessionmaker[Session]
 
     def __new__(cls) -> "DatabaseSessionProvider":
+        # Singleton: one connection pool for the whole process, instead of a new
+        # engine/pool being created on every DatabaseSessionProvider() call site.
         if cls._instance is None:
             instance = super().__new__(cls)
             settings = get_settings()

@@ -29,3 +29,21 @@ Hard rules when writing SQL:
 - If a question cannot be answered with the discovered schema, say so instead of \
   guessing at table or column names.
 """
+
+# Tool descriptions below are also LLM-facing text (the function-calling schema the
+# agent sees), so they're kept here alongside the system prompt rather than in
+# tools.py, which stays focused on the tool implementations themselves.
+
+LIST_AVAILABLE_TABLES_TOOL_DESCRIPTION = (
+    "List every registered table and a short description of what it holds."
+)
+
+GET_TABLE_SCHEMA_TOOL_DESCRIPTION = (
+    "Get column names/types and a few sample rows for one registered table. "
+    "Call this before writing SQL that references the table."
+)
+
+EXECUTE_SQL_QUERY_TOOL_DESCRIPTION = (
+    "Run a single read-only SELECT statement against the database and return "
+    "the resulting rows. Any non-SELECT statement is rejected."
+)

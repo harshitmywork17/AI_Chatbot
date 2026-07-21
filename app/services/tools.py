@@ -11,6 +11,11 @@ from sqlalchemy import inspect, text
 
 from app.core.constants import MAX_RESULT_ROWS, SAMPLE_ROWS_PER_TABLE, TABLE_DESCRIPTIONS
 from app.core.database import DatabaseSessionProvider
+from app.core.prompts import (
+    EXECUTE_SQL_QUERY_TOOL_DESCRIPTION,
+    GET_TABLE_SCHEMA_TOOL_DESCRIPTION,
+    LIST_AVAILABLE_TABLES_TOOL_DESCRIPTION,
+)
 from app.services.sql_guard import assert_select_only
 
 
@@ -98,23 +103,17 @@ def build_sql_agent_tools() -> list[BaseTool | Callable[..., Any]]:
         FunctionTool.from_defaults(
             fn=list_available_tables,
             name="list_available_tables",
-            description="List every registered table and a short description of what it holds.",
+            description=LIST_AVAILABLE_TABLES_TOOL_DESCRIPTION,
         ),
         FunctionTool.from_defaults(
             fn=get_table_schema,
             name="get_table_schema",
-            description=(
-                "Get column names/types and a few sample rows for one registered table. "
-                "Call this before writing SQL that references the table."
-            ),
+            description=GET_TABLE_SCHEMA_TOOL_DESCRIPTION,
         ),
         FunctionTool.from_defaults(
             fn=execute_sql_query,
             name="execute_sql_query",
-            description=(
-                "Run a single read-only SELECT statement against the database and return "
-                "the resulting rows. Any non-SELECT statement is rejected."
-            ),
+            description=EXECUTE_SQL_QUERY_TOOL_DESCRIPTION,
         ),
     ]
     return tools

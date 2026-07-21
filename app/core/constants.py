@@ -1,13 +1,13 @@
 """Project-wide named constants. See naming.md / architecture.md conventions."""
 
+from pathlib import Path
 from types import MappingProxyType
 
-# --- SQL execution guardrails --------------------------------------------
-
+# SQL execution guardrails: row cap for query results, and any token below
+# appearing in a submitted query blocks execution.
 MAX_RESULT_ROWS = 100
 SAMPLE_ROWS_PER_TABLE = 3
 
-# Any of these tokens appearing in a submitted query blocks execution.
 FORBIDDEN_SQL_KEYWORDS = (
     "INSERT",
     "UPDATE",
@@ -23,10 +23,12 @@ FORBIDDEN_SQL_KEYWORDS = (
     "EXECUTE",
 )
 
-# --- Table registry (name -> human-readable description) ----------------
-# Read by the list_available_tables tool so the agent can discover the
-# schema without needing raw information_schema access.
+# Where run_poc.py writes one JSON reasoning trace per query (see trace_service.py).
+TRACE_DIR = Path("traces")
 
+# Table registry (name -> human-readable description), read by the
+# list_available_tables tool so the agent can discover the schema without
+# needing raw information_schema access.
 TABLE_DESCRIPTIONS = MappingProxyType(
     {
         "sites": "Physical sites and campus details.",

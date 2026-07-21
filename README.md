@@ -19,7 +19,7 @@ conversation_ai_poc/
 │   ├── core/
 │   │   ├── config.py       # env-driven Settings (pydantic-settings)
 │   │   ├── constants.py    # row caps, forbidden SQL keywords, table registry
-│   │   ├── prompts.py      # SQL_AGENT_SYSTEM_PROMPT
+│   │   ├── prompts.py      # SQL_AGENT_SYSTEM_PROMPT + tool descriptions (all LLM-facing text)
 │   │   └── database.py     # DatabaseSessionProvider (singleton SQLAlchemy engine)
 │   ├── models/
 │   │   └── av_platform.py  # SQLAlchemy models for the 11 tables
@@ -28,7 +28,8 @@ conversation_ai_poc/
 │   │   ├── sql_guard.py         # assert_select_only read-only gate
 │   │   ├── tools.py             # list_available_tables / get_table_schema / execute_sql_query
 │   │   ├── sql_agent_service.py # SQLAgentProvider (singleton FunctionAgent)
-│   │   └── seed_service.py      # seeding logic, called by app/seed.py
+│   │   ├── seed_service.py      # seeding logic, called by app/seed.py
+│   │   └── trace_service.py     # AgentTrace/save_trace — per-query JSON reasoning trace
 │   ├── utils/
 │   │   └── logger.py       # get_logger(__name__)
 │   ├── run_poc.py          # CLI REPL entrypoint
@@ -76,6 +77,16 @@ Start the NL-to-SQL console:
 
 Each turn prints the generated SQL, a natural-language summary, and the raw rows
 returned (capped at 100).
+
+### Reasoning traces
+
+Every query also writes a JSON trace to `traces/<UTC-timestamp>.json` — the ordered
+list of tool calls the agent made (table lists, schema lookups, the SQL it ran, and
+each tool's raw output), plus its final answer. This is the closest thing to visible
+"reasoning" a tool-calling model exposes: Groq's function-calling models don't emit
+chain-of-thought text on tool-call turns, so the trace is the sequence of what the
+agent looked up and ran, in order, rather than freeform commentary. `traces/` is
+gitignored — it's local run output, not source.
 
 ## Tests / linting
 

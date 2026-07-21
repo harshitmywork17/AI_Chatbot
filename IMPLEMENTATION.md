@@ -13,7 +13,18 @@ How the POC actually works under the hood. For setup/usage see [README.md](READM
   [Security layers](#security-layers-defense-in-depth).
 - **LlamaIndex `FunctionAgent` + Groq.** Groq's Llama models support native function
   calling; `FunctionAgent` handles the tool-call loop (call tool → feed result back →
-  repeat until final answer) so there's no hand-rolled orchestration.
+  repeat until final answer) so there's no hand-rolled orchestration for *that* part.
+- **A LlamaIndex `Workflow` around the agent, not just the agent.** The surrounding
+  orchestration — run the agent, collect a reasoning trace as tool calls happen,
+  persist it, shape the result — used to be inline code in `run_poc.py`'s REPL loop.
+  It's now `SqlAgentWorkflow` (`services/sql_agent_workflow.py`): two explicit
+  `@step`s (`run_agent`, `persist_trace`) connected by a typed event
+  (`AgentRunCompleteEvent`), using the framework's own event-streaming
+  (`ctx.write_event_to_stream`) instead of a hand-rolled loop. The agent still
+  decides dynamically which tables to inspect and what SQL to write — this doesn't
+  turn the pipeline into a fixed, non-agentic sequence, it just formalizes the code
+  *around* the agentic part. `run_poc.py` is left with almost nothing to do: await
+  the workflow, print the result.
 - **Singletons for LLM client and agent** (`GroqLLMProvider`, `SQLAgentProvider`) so
   tool binding and HTTP client setup happen once per process, not once per question.
 
@@ -23,6 +34,14 @@ How the POC actually works under the hood. For setup/usage see [README.md](READM
 flowchart TB
     User(["User (CLI)"])
     REPL["run_poc.py\nREPL loop"]
+
+    subgraph WF["SqlAgentWorkflow (LlamaIndex Workflow)"]
+        direction TB
+        RunStep["@step run_agent"]
+        PersistStep["@step persist_trace"]
+        RunStep -- "AgentRunCompleteEvent" --> PersistStep
+    end
+
     Agent["SQLAgentProvider\nFunctionAgent (LlamaIndex)"]
     LLM["GroqLLMProvider\nGroq LLM client"]
     Tools["tools.py\nlist_available_tables / get_table_schema / execute_sql_query"]
@@ -31,13 +50,15 @@ flowchart TB
     Trace["trace_service.py\nAgentTrace -> traces/*.json"]
 
     User --> REPL
-    REPL --> Agent
+    REPL -- "workflow.run(query, memory)" --> RunStep
+    RunStep <--> Agent
     Agent <--> LLM
     Agent --> Tools
     Tools --> Guard
     Guard --> DB
     Tools --> DB
-    REPL --> Trace
+    PersistStep --> Trace
+    PersistStep -- "SqlAgentResult" --> REPL
     REPL --> User
 ```
 
@@ -51,14 +72,17 @@ summarize. The sequence diagram below shows how that plays out end to end.
 sequenceDiagram
     actor U as User
     participant R as run_poc.py (REPL)
+    participant W1 as Workflow.run_agent
     participant A as FunctionAgent
     participant L as Groq LLM
     participant T as tools.py
     participant G as sql_guard
     participant DB as PostgreSQL
+    participant W2 as Workflow.persist_trace
 
     U->>R: types question
-    R->>A: agent.run(user_msg, memory)
+    R->>W1: workflow.run(query, memory)
+    W1->>A: agent.run(user_msg, memory)
     A->>L: question + tool schemas
     L-->>A: call list_available_tables()
     A->>T: list_available_tables()
@@ -79,16 +103,21 @@ sequenceDiagram
     T-->>A: rows
     A->>L: tool result
     L-->>A: final natural-language summary
-    A-->>R: streamed events (ToolCallResult, AgentOutput)
-    R->>R: build AgentTrace from streamed events
-    R->>R: save_trace() -> traces/<UTC-timestamp>.json
+    A-->>W1: streamed events (ToolCallResult, AgentOutput)
+    W1->>W1: ctx.write_event_to_stream(event) for each
+    W1->>W1: build AgentTrace from streamed events
+    W1->>W2: AgentRunCompleteEvent(response, trace, sql, query_result)
+    W2->>W2: save_trace() -> traces/<UTC-timestamp>.json
+    W2-->>R: StopEvent(result=SqlAgentResult)
     R-->>U: print SQL, summary, rows
 ```
 
-`run_poc._handle_query` consumes `handler.stream_events()` rather than just awaiting
-the final result, so it can pull the last executed SQL + rows out of the
-`ToolCallResult` for `execute_sql_query`, and log every event into the trace as it
-happens.
+`run_agent` consumes `handler.stream_events()` rather than just awaiting the final
+result, so it can pull the last executed SQL + rows out of the `ToolCallResult` for
+`execute_sql_query`, forward every event via `ctx.write_event_to_stream` (so a future
+caller could subscribe to live progress), and record each one into the trace. All of
+this used to be inline in `run_poc.py`; now `run_poc.py` only does `await
+workflow.run(...)` and prints the `SqlAgentResult`.
 
 ## Data flow
 
@@ -142,9 +171,9 @@ flowchart LR
     Summary --> Out
 
     LLM -. "every tool call + message" .-> TraceObj
-    TraceObj -- "json.dumps" --> TraceFile
+    TraceObj -- "persist_trace step:\njson.dumps" --> TraceFile
 
-    EX -. "last sql + rows" .-> Out
+    EX -. "last sql + rows\n(via AgentRunCompleteEvent)" .-> Out
 ```
 
 Every DB cell (`UUID`, `Decimal`, `datetime`/`date`) is normalized to a JSON-safe
@@ -164,9 +193,10 @@ or the trace file — otherwise `json.dumps` would fail on those types directly.
 | `services/tools.py` | The 3 tool functions + `build_sql_agent_tools()` wrapping them as `FunctionTool`s. |
 | `services/sql_guard.py` | `assert_select_only` — strips comments, enforces single statement, `SELECT`/`WITH`-only, keyword denylist. |
 | `services/sql_agent_service.py` | `SQLAgentProvider` — singleton `FunctionAgent` wired with tools + system prompt + Groq LLM. |
+| `services/sql_agent_workflow.py` | `SqlAgentWorkflow` — LlamaIndex `Workflow` with two `@step`s (`run_agent`, `persist_trace`) orchestrating one query end to end; `SqlAgentResult` is its return shape. |
 | `services/trace_service.py` | `AgentTrace`/`save_trace` — records tool calls and model messages into a per-query JSON file. |
 | `services/seed_service.py`, `seed.py` | Schema creation + dummy data seeding (idempotent). |
-| `run_poc.py` | CLI REPL: reads input, drives the agent, streams events, prints SQL/summary/rows. |
+| `run_poc.py` | CLI REPL: reads input, awaits `SqlAgentWorkflow`, prints SQL/summary/rows. |
 
 ## Why a trace file
 
@@ -174,6 +204,24 @@ Groq's function-calling models emit empty `content` on tool-call turns — there
 chain-of-thought to show the user. `AgentTrace` reconstructs the closest available
 substitute: the ordered sequence of tool calls (with args and raw output) plus any
 non-empty model messages, written to `traces/<timestamp>.json` per query.
+
+## Why a Workflow, not just a REPL loop
+
+Before, `run_poc.py` mixed three concerns in one function: driving the agent,
+building the trace, and printing. `SqlAgentWorkflow` pulls the first two out into a
+framework-managed, two-step pipeline:
+
+- **Explicit, typed stages.** `run_agent` and `persist_trace` are connected by
+  `AgentRunCompleteEvent`, a typed event — not a tuple of loose variables threaded
+  through a function.
+- **Independently testable.** `persist_trace` can be exercised with a fake
+  `AgentRunCompleteEvent`, with no LLM or DB involved.
+- **Built-in observability.** `ctx.write_event_to_stream` forwards every tool-call/
+  message event to the workflow's own stream — a future caller (a web UI, a batch
+  runner) can subscribe to live progress without touching `run_agent`'s internals.
+- **The agent itself stays agentic.** `FunctionAgent` still decides at runtime which
+  tables to inspect and what SQL to write; the Workflow only formalizes the code
+  *around* that decision-making, not the decision-making itself.
 
 ## Security layers (defense in depth)
 

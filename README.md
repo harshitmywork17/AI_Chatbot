@@ -28,6 +28,7 @@ conversation_ai_poc/
 │   │   ├── sql_guard.py         # assert_select_only read-only gate
 │   │   ├── tools.py             # list_available_tables / get_table_schema / execute_sql_query
 │   │   ├── sql_agent_service.py # SQLAgentProvider (singleton FunctionAgent)
+│   │   ├── sql_agent_workflow.py # SqlAgentWorkflow (LlamaIndex Workflow: run agent -> persist trace)
 │   │   ├── seed_service.py      # seeding logic, called by app/seed.py
 │   │   └── trace_service.py     # AgentTrace/save_trace — per-query JSON reasoning trace
 │   ├── utils/

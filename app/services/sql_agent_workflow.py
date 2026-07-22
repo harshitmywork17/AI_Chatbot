@@ -40,22 +40,34 @@ class AgentRunCompleteEvent(Event):
     query_result: dict[str, Any] | None
 
 
-class SqlAgentWorkflow(Workflow):
-    """Runs the FunctionAgent for one query, then persists its reasoning trace.
+from app.services.table_search_service import TableSearchService
 
-    Step 1 (`run_agent`) drives the agent's tool-call loop and builds the
-    trace as events arrive. Step 2 (`persist_trace`) writes that trace to
-    disk and shapes the final result. Splitting them keeps "talk to the LLM"
-    and "write the trace file" independently testable.
-    """
+
+class SqlAgentWorkflow(Workflow):
+    """Runs semantic table discovery, drives the FunctionAgent for one query, then persists its trace."""
 
     @step
     async def run_agent(self, ctx: Context, ev: StartEvent) -> AgentRunCompleteEvent:
         query: str = ev.query
         memory: ChatMemoryBuffer = ev.memory
 
+        # 1. Pre-run Semantic Search on DB Table Descriptions
+        search_service = TableSearchService()
+        candidate_tables = search_service.search_relevant_tables(query)
+        candidate_names = [t["table_name"] for t in candidate_tables]
+
+        enriched_prompt_context = ""
+        if candidate_tables:
+            enriched_prompt_context = f"\n\nPre-discovered Candidate Tables & Relationships for query '{query}':\n"
+            for t in candidate_tables:
+                rels = [f"{r['from_column']} -> {r['target_table']}.{r['target_column']}" for r in t.get("relationships", [])]
+                rel_str = f" | Joins: {', '.join(rels)}" if rels else ""
+                enriched_prompt_context += f"- Table: {t['table_name']}{rel_str}\n  Purpose: {t['description']}\n"
+
         agent = SQLAgentProvider().agent
-        handler = agent.run(user_msg=query, memory=memory)
+        user_input_with_context = f"{query}{enriched_prompt_context}" if enriched_prompt_context else query
+
+        handler = agent.run(user_msg=user_input_with_context, memory=memory)
         trace = AgentTrace(query=query)
 
         sql: str | None = None

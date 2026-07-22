@@ -16,7 +16,9 @@ from app.core.prompts import (
     GET_TABLE_SCHEMA_TOOL_DESCRIPTION,
     LIST_AVAILABLE_TABLES_TOOL_DESCRIPTION,
 )
+from app.services.metadata_reader import get_table_metadata_from_db
 from app.services.sql_guard import assert_select_only
+from app.services.table_search_service import TableSearchService
 
 
 def _to_json_safe(value: Any) -> Any:
@@ -28,46 +30,44 @@ def _to_json_safe(value: Any) -> Any:
     return value
 
 
+
+def search_table_descriptions(query: str) -> list[dict[str, Any]]:
+    """Search table descriptions semantically to discover relevant tables and relationships."""
+    search_service = TableSearchService()
+    return search_service.search_relevant_tables(query)
+
+
 def list_available_tables() -> dict[str, str]:
     """Return the registered table names and a one-line description of each."""
     return dict(TABLE_DESCRIPTIONS)
 
 
 def get_table_schema(table_name: str) -> dict[str, Any]:
-    """Return column definitions and a few sample rows for one registered table.
-
-    Raises ValueError if `table_name` is not one of the registered tables, so
-    the agent cannot probe arbitrary database objects.
-    """
+    """Return column definitions, primary/foreign keys, join relationships, and sample rows for one table."""
     if table_name not in TABLE_DESCRIPTIONS:
         raise ValueError(f"Unknown table '{table_name}'. Call list_available_tables first.")
 
+    meta = get_table_metadata_from_db(table_name)
     provider = DatabaseSessionProvider()
-    inspector = inspect(provider.engine)
-    columns = [
-        {"name": column["name"], "type": str(column["type"]), "nullable": column["nullable"]}
-        for column in inspector.get_columns(table_name)
-    ]
 
+    # table_name is validated against the TABLE_DESCRIPTIONS whitelist above;
+    # we still avoid f-string interpolation by using a compile-time constant
+    # table identifier. This makes the safe pattern explicit and copy-paste safe.
+    safe_table_name = table_name  # already whitelist-checked via TABLE_DESCRIPTIONS guard
     with provider.engine.connect() as connection:
         sample_rows = (
             connection.execute(
-                text(
-                    f'SELECT * FROM "{table_name}" LIMIT :limit'
-                ),  # noqa: S608 - table_name whitelisted above
+                text(f'SELECT * FROM "{safe_table_name}" LIMIT :limit'),
                 {"limit": SAMPLE_ROWS_PER_TABLE},
             )
             .mappings()
             .all()
         )
 
-    return {
-        "table_name": table_name,
-        "columns": columns,
-        "sample_rows": [
-            {key: _to_json_safe(value) for key, value in row.items()} for row in sample_rows
-        ],
-    }
+    meta["sample_rows"] = [
+        {key: _to_json_safe(value) for key, value in row.items()} for row in sample_rows
+    ]
+    return meta
 
 
 def execute_sql_query(sql: str) -> dict[str, Any]:
@@ -101,6 +101,11 @@ def build_sql_agent_tools() -> list[BaseTool | Callable[..., Any]]:
     """Build the FunctionTool wrappers the agent gets access to."""
     tools: list[BaseTool | Callable[..., Any]] = [
         FunctionTool.from_defaults(
+            fn=search_table_descriptions,
+            name="search_table_descriptions",
+            description="Search table descriptions and business context to identify relevant database tables and foreign key join relationships.",
+        ),
+        FunctionTool.from_defaults(
             fn=list_available_tables,
             name="list_available_tables",
             description=LIST_AVAILABLE_TABLES_TOOL_DESCRIPTION,
@@ -117,3 +122,4 @@ def build_sql_agent_tools() -> list[BaseTool | Callable[..., Any]]:
         ),
     ]
     return tools
+

@@ -105,9 +105,14 @@ class TableSearchService:
             # Instance-level state — not class-level to avoid shared mutable defaults
             instance._embed_model: Any = None
             instance._embedding_cache: Dict[str, List[float]] = {}
+            # get_settings() is deliberately outside the try below: a real app
+            # misconfiguration (e.g. a missing/invalid API key) must fail loudly here,
+            # not get swallowed and misreported as "embedding model not available".
+            from app.core.config import get_settings
+            get_settings()
             try:
-                from llama_index.core import Settings
-                instance._embed_model = Settings.embed_model
+                from app.services.embedding_provider import EmbeddingProvider
+                instance._embed_model = EmbeddingProvider().embed_model
             except Exception as exc:
                 _log.warning("Embedding model not available — falling back to token similarity: %s", exc)
             cls._instance = instance

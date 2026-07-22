@@ -3,7 +3,7 @@
 from llama_index.core.agent.workflow import FunctionAgent
 
 from app.core.prompts import SQL_AGENT_SYSTEM_PROMPT
-from app.services.llm_provider import GroqLLMProvider
+from app.services.llm_provider import LLMProvider
 from app.services.tools import build_sql_agent_tools
 
 
@@ -22,8 +22,14 @@ class SQLAgentProvider:
                 name="sql_agent",
                 description="Answers natural-language questions with read-only SQL.",
                 tools=build_sql_agent_tools(),
-                llm=GroqLLMProvider().llm,
+                llm=LLMProvider().llm,
                 system_prompt=SQL_AGENT_SYSTEM_PROMPT,
+                # Our workflow is strictly sequential (search -> schema -> execute),
+                # so parallel tool calls are never needed. Some providers (e.g. Groq's
+                # open-weight Llama models) are also unreliable at emitting multiple
+                # tool calls in one turn, so disabling this is a safe default regardless
+                # of which LLM_PROVIDER is configured.
+                allow_parallel_tool_calls=False,
             )
             cls._instance = instance
         return cls._instance

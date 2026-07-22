@@ -12,7 +12,7 @@ def test_fetch_metadata_from_db():
     table_names = [m["table_name"] for m in all_meta]
     assert "devices" in table_names
     assert "rooms" in table_names
-    assert "sites" in table_names
+    assert "locations" in table_names
 
 
 def test_table_metadata_details():
@@ -31,9 +31,9 @@ def test_semantic_table_search_and_fk_resolution():
     results = search_service.search_relevant_tables("Which devices are in Boise HQ site?", top_k=2)
     result_names = [r["table_name"] for r in results]
 
-    # Verify that devices, rooms, and sites are resolved via FK relationships
-    assert "devices" in result_names or "sites" in result_names
-    assert "rooms" in result_names or "sites" in result_names
+    # Verify that devices, rooms, and locations are resolved via FK relationships
+    assert "devices" in result_names or "locations" in result_names
+    assert "rooms" in result_names or "locations" in result_names
 
 
 def test_tools_search_and_schema():

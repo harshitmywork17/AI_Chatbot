@@ -43,19 +43,11 @@ def _updated_at() -> Mapped[datetime]:
     return mapped_column(server_default=func.now())
 
 
-class Site(Base):
-    __tablename__ = "sites"
-
-    site_id: Mapped[uuid.UUID] = _uuid_pk()
-    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
-    location: Mapped[str | None] = mapped_column(String(500))
-    region: Mapped[str | None] = mapped_column(String(100))
-    created_at: Mapped[datetime] = _created_at()
-    updated_at: Mapped[datetime] = _updated_at()
-
-
 class RoomType(Base):
     __tablename__ = "room_types"
+    __table_args__ = (
+        CheckConstraint("jsonb_typeof(expected_device_classes) = 'array'"),
+    )
 
     room_type_id: Mapped[uuid.UUID] = _uuid_pk()
     name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
@@ -67,19 +59,39 @@ class RoomType(Base):
     updated_at: Mapped[datetime] = _updated_at()
 
 
+class Location(Base):
+    """Hierarchical location tree: country -> state -> city -> site -> building."""
+
+    __tablename__ = "locations"
+    __table_args__ = (
+        CheckConstraint("level IN ('country', 'state', 'city', 'site', 'building')"),
+    )
+
+    location_id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    code: Mapped[str | None] = mapped_column(String(50))
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("locations.location_id", ondelete="CASCADE")
+    )
+    level: Mapped[str] = mapped_column(String(20), nullable=False)
+    metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+
+
 class Room(Base):
     __tablename__ = "rooms"
-    __table_args__ = (UniqueConstraint("site_id", "name"),)
+    __table_args__ = (UniqueConstraint("location_id", "room_number"),)
 
     room_id: Mapped[uuid.UUID] = _uuid_pk()
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    site_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("sites.site_id", ondelete="RESTRICT"), nullable=False
-    )
+    room_number: Mapped[str] = mapped_column(String(50), nullable=False)
+    room_name: Mapped[str | None] = mapped_column(String(255))
     room_type_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("room_types.room_type_id", ondelete="SET NULL")
     )
-    building: Mapped[str | None] = mapped_column(String(100))
+    location_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("locations.location_id", ondelete="RESTRICT"), nullable=False
+    )
     floor: Mapped[str | None] = mapped_column(String(50))
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()

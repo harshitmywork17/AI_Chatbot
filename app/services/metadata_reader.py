@@ -17,20 +17,20 @@ _log = logging.getLogger(__name__)
 # Explicit Foreign Key Join Relationships map between tables
 KNOWN_RELATIONSHIPS: Dict[str, List[Dict[str, str]]] = {
     "devices": [
-        {"from_column": "room_id", "target_table": "rooms", "target_column": "id", "relationship": "located in room"},
+        {"from_column": "room_id", "target_table": "rooms", "target_column": "room_id", "relationship": "located in room"},
     ],
     "rooms": [
-        {"from_column": "site_id", "target_table": "sites", "target_column": "id", "relationship": "located at physical site"},
-        {"from_column": "room_type_id", "target_table": "room_types", "target_column": "id", "relationship": "uses room template config"},
+        {"from_column": "location_id", "target_table": "locations", "target_column": "location_id", "relationship": "located at physical site"},
+        {"from_column": "room_type_id", "target_table": "room_types", "target_column": "room_type_id", "relationship": "uses room template config"},
     ],
     "events": [
-        {"from_column": "device_id", "target_table": "devices", "target_column": "id", "relationship": "event applies to device"},
+        {"from_column": "device_mac", "target_table": "devices", "target_column": "mac", "relationship": "event applies to device"},
     ],
     "firmware_inventory": [
-        {"from_column": "device_id", "target_table": "devices", "target_column": "id", "relationship": "firmware snapshot of device"},
+        {"from_column": "device_mac", "target_table": "devices", "target_column": "mac", "relationship": "firmware snapshot of device"},
     ],
     "servicenow_tickets": [
-        {"from_column": "device_id", "target_table": "devices", "target_column": "id", "relationship": "ticket associated with device"},
+        {"from_column": "device_mac", "target_table": "devices", "target_column": "mac", "relationship": "ticket associated with device"},
     ],
 }
 

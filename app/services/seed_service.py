@@ -18,10 +18,10 @@ from app.models.av_platform import (
     Event,
     FirmwareInventory,
     FirmwarePolicy,
+    Location,
     Room,
     RoomType,
     ServiceNowTicket,
-    Site,
 )
 from app.utils.logger import get_logger
 
@@ -30,11 +30,41 @@ logger = get_logger(__name__)
 _NOW = datetime.now(timezone.utc)
 
 
-def _seed_site(session: Session) -> Site:
-    site = Site(name="Boise HQ", location="800 W Chinden Blvd, Boise, ID", region="AMER")
+def _seed_locations(session: Session) -> dict[str, Location]:
+    usa = Location(name="USA", code="US", level="country")
+    session.add(usa)
+    session.flush()
+
+    idaho = Location(name="Idaho", code="ID", level="state", parent_id=usa.location_id)
+    session.add(idaho)
+    session.flush()
+
+    boise = Location(name="Boise", level="city", parent_id=idaho.location_id)
+    session.add(boise)
+    session.flush()
+
+    site = Location(
+        name="Boise HQ",
+        code="BOI-01",
+        level="site",
+        parent_id=boise.location_id,
+        metadata_={"region": "AMER", "address": "800 W Chinden Blvd, Boise, ID"},
+    )
     session.add(site)
     session.flush()
-    return site
+
+    main = Location(
+        name="Main", code="MAIN", level="building", parent_id=site.location_id,
+        metadata_={"floors": 3},
+    )
+    annex = Location(
+        name="Annex", code="ANNEX", level="building", parent_id=site.location_id,
+        metadata_={"floors": 1},
+    )
+    session.add_all([main, annex])
+    session.flush()
+
+    return {"Main": main, "Annex": annex}
 
 
 def _seed_room_types(session: Session) -> dict[str, RoomType]:
@@ -60,54 +90,54 @@ def _seed_room_types(session: Session) -> dict[str, RoomType]:
     return {room_type.name: room_type for room_type in room_types}
 
 
-def _seed_rooms(session: Session, site: Site, room_types: dict[str, RoomType]) -> dict[str, Room]:
+def _seed_rooms(
+    session: Session, buildings: dict[str, Location], room_types: dict[str, RoomType]
+) -> dict[str, Room]:
     rooms = [
         Room(
-            name="Executive Suite",
-            site_id=site.site_id,
+            room_number="EXEC-1",
+            room_name="Executive Suite",
+            location_id=buildings["Main"].location_id,
             room_type_id=room_types["Executive Boardroom"].room_type_id,
-            building="Main",
             floor="3",
         ),
         Room(
-            name="Room 101",
-            site_id=site.site_id,
+            room_number="101",
+            location_id=buildings["Main"].location_id,
             room_type_id=room_types["Standard Conference Room"].room_type_id,
-            building="Main",
             floor="1",
         ),
         Room(
-            name="Room 205",
-            site_id=site.site_id,
+            room_number="205",
+            location_id=buildings["Main"].location_id,
             room_type_id=room_types["Standard Conference Room"].room_type_id,
-            building="Main",
             floor="2",
         ),
         Room(
-            name="Huddle A",
-            site_id=site.site_id,
+            room_number="HUD-A",
+            room_name="Huddle A",
+            location_id=buildings["Annex"].location_id,
             room_type_id=room_types["Huddle Room"].room_type_id,
-            building="Annex",
             floor="1",
         ),
         Room(
-            name="Huddle B",
-            site_id=site.site_id,
+            room_number="HUD-B",
+            room_name="Huddle B",
+            location_id=buildings["Annex"].location_id,
             room_type_id=room_types["Huddle Room"].room_type_id,
-            building="Annex",
             floor="1",
         ),
         Room(
-            name="Auditorium",
-            site_id=site.site_id,
+            room_number="AUD-1",
+            room_name="Auditorium",
+            location_id=buildings["Main"].location_id,
             room_type_id=room_types["Executive Boardroom"].room_type_id,
-            building="Main",
             floor="1",
         ),
     ]
     session.add_all(rooms)
     session.flush()
-    return {room.name: room for room in rooms}
+    return {room.room_number: room for room in rooms}
 
 
 def _seed_devices(session: Session, rooms: dict[str, Room]) -> list[Device]:
@@ -279,20 +309,28 @@ def _seed_devices(session: Session, rooms: dict[str, Room]) -> list[Device]:
             False,
         ),
     ]
+    room_number_by_label = {
+        "Executive Suite": "EXEC-1",
+        "Room 101": "101",
+        "Room 205": "205",
+        "Huddle A": "HUD-A",
+        "Huddle B": "HUD-B",
+        "Auditorium": "AUD-1",
+    }
     devices = [
         Device(
             mac=mac,
             model=model,
             manufacturer=manufacturer,
             device_class=device_class,
-            room_id=rooms[room_name].room_id,
+            room_id=rooms[room_number_by_label[room_label]].room_id,
             status=status,
             firmware_version=firmware,
             risk_score=risk_score,
             baseline_drift=drift,
             last_seen=_NOW - timedelta(minutes=5),
         )
-        for mac, model, manufacturer, device_class, room_name, status, firmware, risk_score, drift in device_specs
+        for mac, model, manufacturer, device_class, room_label, status, firmware, risk_score, drift in device_specs
     ]
     session.add_all(devices)
     session.flush()
@@ -494,7 +532,7 @@ def _seed_connector_health(session: Session) -> None:
 def seed_database() -> None:
     """Create the schema (if missing) and populate it with dummy data.
 
-    No-ops if the `sites` table already has rows, so the script is safe to
+    No-ops if the `locations` table already has rows, so the script is safe to
     run more than once.
     """
     provider = DatabaseSessionProvider()
@@ -503,13 +541,13 @@ def seed_database() -> None:
     Base.metadata.create_all(provider.engine)
 
     with provider.session() as session:
-        if session.query(Site).first() is not None:
+        if session.query(Location).first() is not None:
             logger.info("Database already seeded, skipping.")
             return
 
-        site = _seed_site(session)
+        buildings = _seed_locations(session)
         room_types = _seed_room_types(session)
-        rooms = _seed_rooms(session, site, room_types)
+        rooms = _seed_rooms(session, buildings, room_types)
         devices = _seed_devices(session, rooms)
         _seed_device_capabilities(session, devices)
         baselines = _seed_baselines(session)

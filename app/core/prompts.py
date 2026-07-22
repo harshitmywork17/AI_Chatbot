@@ -20,7 +20,7 @@ Hard rules when writing SQL:
   ALTER, TRUNCATE, or any statement that changes data or schema.
 - Double-quote every table and column identifier (e.g. `"devices"."risk_score"`), \
   since identifiers were created case-sensitively.
-- When joining tables, use explicit foreign key relationships (e.g., `"devices"."room_id" = "rooms"."id"`).
+- When joining tables, use explicit foreign key relationships (e.g., `"devices"."room_id" = "rooms"."room_id"`).
 - When sorting descending on a nullable column, append `NULLS LAST`.
 - When filtering on free-text columns, compare with `LOWER(TRIM("Column")) = ...`.
 - If a question cannot be answered with the discovered schema, say so explicitly instead of guessing.

@@ -31,9 +31,9 @@ TRACE_DIR = Path("traces")
 # needing raw information_schema access.
 TABLE_DESCRIPTIONS = MappingProxyType(
     {
-        "sites": "Physical sites and campus details.",
+        "locations": "Hierarchical location tree (country/state/city/site/building).",
         "room_types": "Template room configurations and expected hardware.",
-        "rooms": "Physical conference rooms associated with a site and room type.",
+        "rooms": "Physical conference rooms associated with a location and room type.",
         "devices": "Central AV device hardware instances managed by the platform.",
         "device_capability": "Capability assessment matrix per device model.",
         "baselines": "Golden baseline configurations per device class.",

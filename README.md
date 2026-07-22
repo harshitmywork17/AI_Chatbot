@@ -24,7 +24,8 @@ conversation_ai_poc/
 │   ├── models/
 │   │   └── av_platform.py  # SQLAlchemy models for the 11 tables
 │   ├── services/
-│   │   ├── llm_provider.py      # GroqLLMProvider (singleton)
+│   │   ├── llm_provider.py      # LLMProvider (singleton) — swap via LLM_PROVIDER (groq/anthropic)
+│   │   ├── embedding_provider.py # EmbeddingProvider (singleton) — swap via EMBEDDING_PROVIDER (local/openai)
 │   │   ├── sql_guard.py         # assert_select_only read-only gate
 │   │   ├── tools.py             # list_available_tables / get_table_schema / execute_sql_query
 │   │   ├── sql_agent_service.py # SQLAgentProvider (singleton FunctionAgent)

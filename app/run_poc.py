@@ -6,8 +6,14 @@ Usage:
 
 import asyncio
 import os
+import sys
 
 os.environ.setdefault("TRANSFORMERS_NO_ADVISORY_WARNINGS", "1")
+
+# The LLM's summaries can contain Unicode punctuation (e.g. narrow no-break spaces)
+# that Windows' default console codepage (cp1252) can't encode, crashing print().
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 from llama_index.core.memory import ChatMemoryBuffer
 

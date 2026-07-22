@@ -25,8 +25,12 @@ How the POC actually works under the hood. For setup/usage see [README.md](READM
   turn the pipeline into a fixed, non-agentic sequence, it just formalizes the code
   *around* the agentic part. `run_poc.py` is left with almost nothing to do: await
   the workflow, print the result.
-- **Singletons for LLM client and agent** (`GroqLLMProvider`, `SQLAgentProvider`) so
+- **Singletons for LLM client and agent** (`LLMProvider`, `SQLAgentProvider`) so
   tool binding and HTTP client setup happen once per process, not once per question.
+  `LLMProvider` and `EmbeddingProvider` build the configured backend from
+  `LLM_PROVIDER`/`EMBEDDING_PROVIDER` (see `services/llm_provider.py`,
+  `services/embedding_provider.py`), so switching e.g. Groq -> Anthropic or
+  local -> OpenAI embeddings is a `.env` change, not a code change.
 
 ## Architecture
 
@@ -43,7 +47,7 @@ flowchart TB
     end
 
     Agent["SQLAgentProvider\nFunctionAgent (LlamaIndex)"]
-    LLM["GroqLLMProvider\nGroq LLM client"]
+    LLM["LLMProvider\nGroq/Anthropic LLM client"]
     Tools["tools.py\nlist_available_tables / get_table_schema / execute_sql_query"]
     Guard["sql_guard.py\nassert_select_only"]
     DB[("PostgreSQL\nREAD ONLY txn")]
@@ -184,12 +188,13 @@ or the trace file — otherwise `json.dumps` would fail on those types directly.
 
 | Module | Responsibility |
 |---|---|
-| `core/config.py` | `pydantic-settings` — reads `GROQ_API_KEY`, `DATABASE_URL`, model name from `.env`. |
+| `core/config.py` | `pydantic-settings` — reads `DATABASE_URL`, `LLM_PROVIDER`/`EMBEDDING_PROVIDER` + their API keys/models from `.env`; validates only the selected provider's credentials. |
 | `core/constants.py` | Row caps, forbidden-keyword denylist, `TABLE_DESCRIPTIONS` registry, trace dir. |
 | `core/prompts.py` | All LLM-facing text: system prompt (4-step workflow + SQL hard rules) and tool descriptions. |
 | `core/database.py` | `DatabaseSessionProvider` — singleton SQLAlchemy engine. |
 | `models/av_platform.py` | SQLAlchemy ORM models for the 11 seeded tables. |
-| `services/llm_provider.py` | `GroqLLMProvider` — singleton Groq LLM client. |
+| `services/llm_provider.py` | `LLMProvider` — singleton LLM client, built for whichever `LLM_PROVIDER` is configured (groq/anthropic). |
+| `services/embedding_provider.py` | `EmbeddingProvider` — singleton embedding client, built for whichever `EMBEDDING_PROVIDER` is configured (local/openai). |
 | `services/tools.py` | The 3 tool functions + `build_sql_agent_tools()` wrapping them as `FunctionTool`s. |
 | `services/sql_guard.py` | `assert_select_only` — strips comments, enforces single statement, `SELECT`/`WITH`-only, keyword denylist. |
 | `services/sql_agent_service.py` | `SQLAgentProvider` — singleton `FunctionAgent` wired with tools + system prompt + Groq LLM. |

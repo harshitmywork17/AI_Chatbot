@@ -1,0 +1,24 @@
+{
+  "extraKnownMarketplaces": {
+    "harshit-mods": {
+      "source": {
+        "source": "directory",
+        "path": "."
+      }
+    },
+    "claritymaxx": {
+      "source": {
+        "source": "github",
+        "repo": "v60samurai/claritymaxx"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "token-weather@harshit-mods": true,
+    "blast-radius@harshit-mods": true,
+    "replay-theater@harshit-mods": true,
+    "changed-files@harshit-mods": true,
+    "session-meter@harshit-mods": true,
+    "claritymaxx@claritymaxx": true
+  }
+}

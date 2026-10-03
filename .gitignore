@@ -7,3 +7,6 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 traces/
+
+# Claude Code mod types, written by the engine at load
+claude-mods/*/.claude-plugin/types/
